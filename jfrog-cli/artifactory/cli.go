@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/codegangsta/cli"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/artifactory/commands"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/artifactory/commands/buildinfo"
@@ -49,6 +52,7 @@ import (
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/artifactory/ping"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/artifactory/search"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/artifactory/setprops"
+	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/artifactory/topdownloads"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/artifactory/upload"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/artifactory/use"
 	"github.com/jfrog/jfrog-cli-go/jfrog-cli/docs/common"
@@ -59,8 +63,6 @@ import (
 	rtclientutils "github.com/jfrog/jfrog-client-go/artifactory/services/utils"
 	clientutils "github.com/jfrog/jfrog-client-go/utils"
 	"github.com/jfrog/jfrog-client-go/utils/log"
-	"strconv"
-	"strings"
 )
 
 func GetCommands() []cli.Command {
@@ -451,6 +453,18 @@ func GetCommands() []cli.Command {
 			ArgsUsage: common.CreateEnvVars(),
 			Action: func(c *cli.Context) {
 				pingCmd(c)
+			},
+		},
+		{
+			Name:      "top-downloads",
+			Flags:     getTopDownloadsFlags(),
+			Aliases:   []string{"tdl"},
+			Usage:     topdownloads.Description,
+			HelpName:  common.CreateUsage("rt top-downloads", topdownloads.Description, topdownloads.Usage),
+			UsageText: topdownloads.Arguments,
+			ArgsUsage: common.CreateEnvVars(),
+			Action: func(c *cli.Context) {
+				topDownloadsCmd(c)
 			},
 		},
 	}
@@ -1109,6 +1123,17 @@ func getBuildScanFlags() []cli.Flag {
 	}...)
 }
 
+func getTopDownloadsFlags() []cli.Flag {
+	return append(getSearchFlags(),
+		[]cli.Flag{
+			cli.IntFlag{
+				Name:  "top, c",
+				Usage: "[Optional] The number of most downloaded artifacts.",
+				Value: 3,
+			},
+		}...)
+}
+
 func createArtifactoryDetailsByFlags(c *cli.Context, includeConfig bool) *config.ArtifactoryDetails {
 	artDetails := createArtifactoryDetails(c, includeConfig)
 	if artDetails.Url == "" {
@@ -1683,6 +1708,46 @@ func gitLfsCleanCmd(c *cli.Context) {
 		return
 	}
 	interactiveDeleteLfsFiles(filesToDelete, configuration)
+}
+
+func topDownloadsCmd(c *cli.Context) {
+	log.Debug("topDownloadsCmd is being executed..")
+	if c.NArg() > 0 && c.IsSet("spec") {
+		cliutils.PrintHelpAndExitWithError("No arguments should be sent when the spec option is used.", c)
+	}
+	if !(c.NArg() == 1 || (c.NArg() == 0 && c.IsSet("spec"))) {
+		cliutils.PrintHelpAndExitWithError("Wrong number of arguments.", c)
+	}
+
+	log.Debug("Validating search spec...")
+	var searchSpec *spec.SpecFiles
+	if c.IsSet("spec") {
+		searchSpec = getSearchSpec(c)
+	} else {
+		validateCommonContext(c)
+		searchSpec = createDefaultSearchSpec(c)
+	}
+	log.Debug("Validation is completed.")
+
+	log.Debug("Searching for artifacts...")
+	artDetails := createArtifactoryDetails(c, true)
+	searchResults, err := generic.Search(searchSpec, artDetails)
+	cliutils.ExitOnErr(err)
+	log.Debug("Search is completed.")
+
+	// tdls := utils.NewTopDownloadsService(httpclient.NewDefaultHttpClient())
+	// tdls.SetArtifactoryDetails(artDetails) // TODO(vlad): implement AuthN
+	for _, result := range searchResults {
+		log.Output(result.Path)
+		// tdls.GetAftifactDownloadCount(result.Path)
+	}
+
+	// result, err := json.Marshal(searchResults)
+	// cliutils.FailNoOp(err, len(searchResults), 0, isFailNoOp(c))
+
+	// log.Output(string(clientutils.IndentJson(result)))
+
+	log.Debug("topDownloadsCmd is completed")
 }
 
 func interactiveDeleteLfsFiles(filesToDelete []rtclientutils.ResultItem, configuration *generic.GitLfsCleanConfiguration) {
