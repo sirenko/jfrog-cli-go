@@ -9,7 +9,7 @@ import (
 	"github.com/jfrog/jfrog-client-go/utils/log"
 )
 
-type artifactStatsJsonResponse struct {
+type ArtifactStatsJsonResponse struct {
 	URI                  string `json:"uri"`
 	DownloadCount        int    `json:"downloadCount"`
 	LastDownloaded       int64  `json:"lastDownloaded"`
@@ -43,11 +43,12 @@ func (s *TopDownloadsService) IsDryRun() bool {
 	return false
 }
 
-// GetAftifactDownloads returns downloads counter for a given 'artifact' in the 'repo'
+// GetAftifactDownloads returns downloads counter by 'artifactPath'
+// TODO(vlad): finish the service's implementation
 func (s *TopDownloadsService) GetAftifactDownloadCount(artifactPath string) (int, error) {
 	u, err := url.Parse(s.ArtDetails.GetUrl())
 	if err != nil {
-		return 20, err
+		return 0, err
 	}
 	u.Path = path.Join(u.Path, "/artifactory/api/storage", artifactPath)
 	u.RawQuery = "stats"
@@ -55,22 +56,4 @@ func (s *TopDownloadsService) GetAftifactDownloadCount(artifactPath string) (int
 	log.Debug(u)
 
 	return 0, nil
-	//
-	// resp, err := c.httpClient.Do(req)
-	// if err != nil {
-	// 	log.Fatalf(`client failed to query artifactory: %+v`, err)
-	// 	return -1, err
-	// }
-	// defer resp.Body.Close()
-	// if resp.StatusCode != http.StatusOK {
-	// 	log.Fatalf(`artifactory returned unexpected response status: %d - %s`, resp.StatusCode, resp.Status)
-	// 	return -1, err
-	// }
-	// statsResp := new(artifactStatsJsonResponse)
-	// if err := json.NewDecoder(resp.Body).Decode(statsResp); err != nil {
-	// 	log.Fatalf(`failed to decode json response from artifactory: %+v`, err)
-	// 	return -1, err
-	// }
-	// // fmt.Println(statsResp)
-	// return statsResp.DownloadCount, nil
 }

@@ -1,9 +1,11 @@
 package artifactory
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -61,7 +63,9 @@ import (
 	buildinfocmd "github.com/jfrog/jfrog-client-go/artifactory/buildinfo"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
 	rtclientutils "github.com/jfrog/jfrog-client-go/artifactory/services/utils"
+	"github.com/jfrog/jfrog-client-go/httpclient"
 	clientutils "github.com/jfrog/jfrog-client-go/utils"
+	"github.com/jfrog/jfrog-client-go/utils/io/httputils"
 	"github.com/jfrog/jfrog-client-go/utils/log"
 )
 
@@ -1710,6 +1714,16 @@ func gitLfsCleanCmd(c *cli.Context) {
 	interactiveDeleteLfsFiles(filesToDelete, configuration)
 }
 
+// counter is an auxiliary type for artifact counters sorting
+type counter struct {
+	name string
+	num  int
+}
+
+func (c counter) String() string {
+	return fmt.Sprintf("%d %s", c.num, c.name)
+}
+
 func topDownloadsCmd(c *cli.Context) {
 	log.Debug("topDownloadsCmd is being executed..")
 	if c.NArg() > 0 && c.IsSet("spec") {
@@ -1735,18 +1749,42 @@ func topDownloadsCmd(c *cli.Context) {
 	cliutils.ExitOnErr(err)
 	log.Debug("Search is completed.")
 
-	// tdls := utils.NewTopDownloadsService(httpclient.NewDefaultHttpClient())
-	// tdls.SetArtifactoryDetails(artDetails) // TODO(vlad): implement AuthN
+	client := httpclient.NewDefaultHttpClient()
+	clientDetails := httputils.HttpClientDetails{
+		User:     artDetails.User,
+		Password: artDetails.Password,
+		ApiKey:   artDetails.ApiKey,
+		Headers:  map[string]string{"Content-Type": "text/plain"}}
+
+	// TODO(vlad): consider paralleling get requests to improve the command's performance
+	var counters = []counter{}
 	for _, result := range searchResults {
-		log.Output(result.Path)
-		// tdls.GetAftifactDownloadCount(result.Path)
+		log.Debug(result.Path)
+		apiURL := artDetails.GetUrl() + "api/storage/" + result.Path + "?stats"
+		resp, body, _, err := client.SendGet(apiURL, true, clientDetails)
+		if err != nil {
+			log.Error(err)
+		}
+		log.Debug(resp, string(body))
+		statsResp := new(utils.ArtifactStatsJsonResponse)
+		if err := json.NewDecoder(bytes.NewReader(body)).Decode(statsResp); err != nil {
+			log.Error(`failed to decode json response from artifactory: %+v`, err)
+		}
+		log.Debug(result.Path, statsResp.DownloadCount)
+		counters = append(counters, counter{result.Path, statsResp.DownloadCount})
 	}
 
-	// result, err := json.Marshal(searchResults)
-	// cliutils.FailNoOp(err, len(searchResults), 0, isFailNoOp(c))
-
-	// log.Output(string(clientutils.IndentJson(result)))
-
+	// TODO(vlad): consider refactoring sorting part with min heap
+	sort.Slice(counters, func(i, j int) bool {
+		return counters[i].num > counters[j].num
+	})
+	numTopItems := c.Int("top")
+	if len(counters) < numTopItems {
+		numTopItems = len(counters)
+	}
+	for _, c := range counters[:numTopItems] {
+		log.Output(c)
+	}
 	log.Debug("topDownloadsCmd is completed")
 }
 
