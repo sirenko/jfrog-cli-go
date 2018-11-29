@@ -81,9 +81,9 @@ def buildPublishDockerImage(version, jfrogCliRepoDir) {
     }
 }
 
-def uploadToBintray(pkg, fileName) {
+def uploadToArtifactory(pkg, fileName) {
     sh """#!/bin/bash
-           bin/jfrog bt u $cliWorkspace/$fileName $subject/$repo/$pkg/$version /$version/$pkg/ --user=$USER_NAME --key=$KEY
+           jfrog rt u --url=$ART_URL --user=$USER --password=$PASSWORD $cliWorkspace/$fileName $REPOSITORY_PATH/$pkg
         """
 }
 
@@ -95,7 +95,7 @@ def buildAndUpload(goos, goarch, pkg, fileExtension) {
         sh "mv $fileName $cliWorkspace"
     }
 
-    uploadToBintray(pkg, fileName)
+    uploadToArtifactory(pkg, fileName)
     sh "rm $fileName"
 }
 
